@@ -1,2 +1,4 @@
 .idea
 model/*.pkl
+.streamlit/secrets.toml
+__pycache__/

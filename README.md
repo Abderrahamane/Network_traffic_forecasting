@@ -16,8 +16,9 @@ The script builds a time series with:
 
 - `data/simulate_telecom_consumption.py`: main generator script
 - `app.py`: Streamlit forecasting app
-- `model/model.pkl`: trained SARIMAX model artifact
 - `data/sim_1year.csv`: default sample dataset used by the app
+- `scripts/upload_model_to_hf.py`: uploads large model files to Hugging Face Hub
+- `.streamlit/secrets.toml.example`: template for model download secrets
 - `requirements.txt`: Python dependencies
 
 ## Quick start
@@ -66,7 +67,7 @@ python data/simulate_telecom_consumption.py \
 
 ## Streamlit app (local)
 
-Run the forecasting app with the included model artifact:
+Run the forecasting app:
 
 ```bat
 pip install -r requirements.txt
@@ -79,6 +80,40 @@ The app expects:
 
 - model path: `model/model.pkl`
 - data columns: `timestamp`, `data_consumption_gb`
+- if `model/model.pkl` is missing, app downloads from `MODEL_URL` (secret/env var)
+
+## Host model.pkl (recommended: Hugging Face Hub)
+
+Use this once to host your large model file outside GitHub.
+
+1. Create a Hugging Face access token with **Write** permission.
+2. Run the upload helper:
+
+```bat
+python scripts\upload_model_to_hf.py --repo-id YOUR_USERNAME/network-traffic-model --token YOUR_HF_TOKEN --model-path model\model.pkl --target-filename model.pkl
+```
+
+After upload, you get a direct file URL like:
+
+`https://huggingface.co/YOUR_USERNAME/network-traffic-model/resolve/main/model.pkl`
+
+## Configure secrets for model download
+
+For local development:
+
+1. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+2. Set `MODEL_URL` to your direct model URL
+3. Optionally set `MODEL_AUTH_TOKEN` for private model files
+
+For Streamlit Community Cloud:
+
+1. Open app settings -> **Secrets**
+2. Add:
+
+```toml
+MODEL_URL = "https://huggingface.co/YOUR_USERNAME/network-traffic-model/resolve/main/model.pkl"
+MODEL_AUTH_TOKEN = ""
+```
 
 ## Deploy on Streamlit Community Cloud
 
@@ -87,6 +122,7 @@ The app expects:
 3. Choose your repository and branch.
 4. Set the entry point to `app.py`.
 5. Deploy and check logs if dependency errors appear.
+6. On first run, the app downloads `model.pkl` automatically and caches it in `model/`.
 
 If logs show a missing package, add it to `requirements.txt`, push, and redeploy.
 

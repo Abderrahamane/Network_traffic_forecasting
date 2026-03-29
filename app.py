@@ -1,21 +1,61 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+from io import BytesIO
 
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_PATH = ROOT_DIR / "data" / "sim_1year.csv"
 DEFAULT_MODEL_PATH = ROOT_DIR / "model" / "model.pkl"
 REQUIRED_COLUMNS = {"timestamp", "data_consumption_gb"}
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 @st.cache_resource
 def load_model(model_path: str):
     return joblib.load(model_path)
+
+
+def get_config_value(key: str, default: str = "") -> str:
+    try:
+        value = st.secrets.get(key, default)
+    except Exception:
+        value = default
+
+    if not value:
+        value = os.getenv(key, default)
+
+    return str(value).strip()
+
+
+def ensure_model_available(model_path: Path) -> Path:
+    if model_path.exists():
+        return model_path
+
+    model_url = get_config_value("MODEL_URL")
+    if not model_url:
+        raise FileNotFoundError(
+            f"Model not found at `{model_path}` and `MODEL_URL` is not configured in Streamlit secrets."
+        )
+
+    auth_token = get_config_value("MODEL_AUTH_TOKEN")
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else None
+
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(model_url, stream=True, timeout=120, headers=headers) as response:
+        response.raise_for_status()
+        with open(model_path, "wb") as file_obj:
+            for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
+                if chunk:
+                    file_obj.write(chunk)
+
+    return model_path
 
 
 @st.cache_data
@@ -25,7 +65,7 @@ def read_csv_from_path(path: str) -> pd.DataFrame:
 
 @st.cache_data
 def read_csv_from_upload(file_bytes: bytes) -> pd.DataFrame:
-    return pd.read_csv(pd.io.common.BytesIO(file_bytes))
+    return pd.read_csv(BytesIO(file_bytes))
 
 
 def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -108,7 +148,8 @@ def main() -> None:
     st.caption("Deploy-ready Streamlit app for telecom data consumption forecasting.")
 
     st.sidebar.header("Configuration")
-    model_path = st.sidebar.text_input("Model path", value=str(DEFAULT_MODEL_PATH))
+    model_path = Path(st.sidebar.text_input("Model path", value=str(DEFAULT_MODEL_PATH)))
+    st.sidebar.caption("If this file is missing, the app downloads it from MODEL_URL secret.")
     horizon = st.sidebar.slider("Forecast horizon (steps)", min_value=1, max_value=24 * 30, value=24 * 7)
 
     source = st.sidebar.radio("Data source", options=["Default dataset", "Upload CSV"], index=0)
@@ -143,7 +184,8 @@ def main() -> None:
         return
 
     try:
-        model = load_model(model_path)
+        resolved_model_path = ensure_model_available(model_path)
+        model = load_model(str(resolved_model_path))
     except Exception as exc:
         st.error(f"Failed to load model from `{model_path}`: {exc}")
         return
