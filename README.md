@@ -2,7 +2,7 @@
 
 A telecom-focused time series project that forecasts **data consumption** from historical traffic.
 
-Live app: `https://networktrafficforecasting-abderrahmanehouri.streamlit.app/`
+Live app: https://networktrafficforecasting-abderrahmanehouri.streamlit.app/
 
 ## What this project is
 
